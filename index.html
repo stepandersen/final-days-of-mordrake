@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Final Days of Mordrake</title>
+    <link rel="stylesheet" href="./styles/main.css">
+  </head>
+  <body>
+    <div id="area-backdrop" class="area-backdrop" aria-hidden="true"></div>
+    <main class="shell">
+      <p id="run-summary" class="area-progress"></p>
+
+      <section class="layout">
+        <section class="arena-panel">
+          <div class="arena">
+            <div class="combatant player-side">
+              <div class="portrait" id="player-portrait">
+                <img id="player-portrait-image" class="character-portrait" alt="">
+                <div class="portrait-identity">
+                  <strong id="player-name"></strong>
+                  <span class="level-shield" aria-label="Character level">
+                    <span id="player-level"></span>
+                  </span>
+                </div>
+              </div>
+              <div id="player-stats" class="stat-grid compact"></div>
+              <div class="bar">
+                <span id="player-hp-bar"></span>
+              </div>
+              <p id="player-hp-text" class="muted"></p>
+              <div class="bar mana">
+                <span id="player-mana-bar"></span>
+              </div>
+              <p id="player-mana-text" class="muted"></p>
+            </div>
+
+            <div class="versus">VS</div>
+
+            <div class="combatant enemy-side">
+              <div class="portrait" id="enemy-portrait">
+                <img id="enemy-portrait-image" class="character-portrait opponent-portrait" alt="" hidden>
+                <span id="enemy-portrait-placeholder">Opponent</span>
+              </div>
+              <div id="enemy-list" class="stack"></div>
+            </div>
+          </div>
+
+          <div id="combat-narration" class="combat-narration" aria-live="polite">
+            Choose a plan and start the fight.
+          </div>
+        </section>
+
+        <section class="action-panel">
+          <div class="controls">
+            <div class="targeting-control">
+              <span class="control-label">Target priority</span>
+              <div id="target-priority" class="target-priority" aria-label="Target priority"></div>
+            </div>
+            <button id="start-fight" type="button">Start Fight</button>
+          </div>
+
+          <div id="player-loadout" class="loadout-grid"></div>
+        </section>
+
+        <section class="panel log-panel">
+          <h2>Combat Log</h2>
+          <div id="combat-log" class="log" aria-live="polite"></div>
+          <div class="run-actions">
+            <button id="debug-items" class="debug-button" type="button">Items</button>
+            <button id="debug-monsters" class="debug-button" type="button">Monsters</button>
+            <button id="reset-run" type="button">New Run</button>
+          </div>
+        </section>
+
+        <div id="reward-popover" class="reward-popover" hidden>
+          <section class="panel reward-panel" role="dialog" aria-modal="true" aria-labelledby="reward-title">
+            <h2 id="reward-title">Choose Reward</h2>
+            <div id="reward-list" class="stack"></div>
+          </section>
+        </div>
+
+        <div id="debug-items-popover" class="reward-popover debug-popover" hidden>
+          <section class="panel debug-panel debug-items-panel" role="dialog" aria-modal="true" aria-labelledby="debug-items-title">
+            <div class="debug-panel-header">
+              <div>
+                <p class="debug-label">Debug Tool</p>
+                <h2 id="debug-items-title">Add Item Reward</h2>
+              </div>
+              <button class="popover-close" type="button" data-close-debug aria-label="Close">&times;</button>
+            </div>
+            <p id="debug-item-status" class="debug-status" aria-live="polite"></p>
+            <div id="debug-item-list" class="debug-item-list"></div>
+          </section>
+        </div>
+
+        <div id="debug-monsters-popover" class="reward-popover debug-popover" hidden>
+          <section class="panel debug-panel" role="dialog" aria-modal="true" aria-labelledby="debug-monsters-title">
+            <div class="debug-panel-header">
+              <div>
+                <p class="debug-label">Debug Tool</p>
+                <h2 id="debug-monsters-title">Choose Encounter</h2>
+              </div>
+              <button class="popover-close" type="button" data-close-debug aria-label="Close">&times;</button>
+            </div>
+            <div id="debug-monster-list" class="debug-monster-list"></div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
