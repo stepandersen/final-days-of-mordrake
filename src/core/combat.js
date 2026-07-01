@@ -43,6 +43,10 @@ export function runCombat(player, encounter, targetPriority) {
     });
   }
 
+  if (encounter.enemyInitiate) {
+    resolveEnemyEngage(state, log);
+  }
+
   for (let round = 1; round <= MAX_ROUNDS; round += 1) {
     if (isFightOver(state)) break;
     log.push(important(`Round ${round}`, { type: "round", round }));
@@ -64,7 +68,7 @@ export function runCombat(player, encounter, targetPriority) {
         log,
       });
     }
-    resolveStatusTriggers(state.player, "setEnd", log);
+    resolveStatusTriggers(state.player, "setEnd", log, [state.player]);
     resolveBaselineManaRegen(state.player, log);
     tickSetStatuses(state.player);
 
@@ -85,7 +89,7 @@ export function runCombat(player, encounter, targetPriority) {
           log,
         });
       }
-      resolveStatusTriggers(enemy, "setEnd", log);
+      resolveStatusTriggers(enemy, "setEnd", log, state.enemies);
       resolveBaselineManaRegen(enemy, log);
       tickSetStatuses(enemy);
     }
@@ -132,26 +136,59 @@ function createCombatState(player, encounter) {
       spellShield: 0,
       statuses: [],
       usedOnce: new Set(),
+      usedThresholds: new Set(),
       passives: getActivePassiveRefs(player).map((ref) => resolveItem(player, ref)),
       pendingEngageReplay: false,
     },
-    enemies: encounter.monsters.map((monster, index) => ({
-      ...structuredClone(monster),
-      instanceId: `${monster.id}-${index}`,
+    enemies: encounter.monsters.map((monster, index) => createMonsterActor(monster, `${monster.id}-${index}`, {
       boss: monster.boss ?? (Boolean(encounter.boss) && index === 0),
-      maxHp: monster.hp,
-      mana: monster.mana ?? 0,
-      maxMana: monster.mana ?? 0,
-      stats: {},
-      derived: {},
-      shield: 0,
-      spellShield: monster.spellShield ?? 0,
-      statuses: [],
-      usedOnce: new Set(),
-      passives: [],
-      attackBonus: 0,
     })),
   };
+}
+
+function createMonsterActor(monster, instanceId, overrides = {}) {
+  return {
+    ...structuredClone(monster),
+    ...overrides,
+    instanceId,
+    maxHp: monster.hp,
+    mana: monster.mana ?? 0,
+    maxMana: monster.mana ?? 0,
+    stats: {},
+    derived: {},
+    shield: 0,
+    spellShield: monster.spellShield ?? 0,
+    statuses: [],
+    usedOnce: new Set(),
+    usedThresholds: new Set(),
+    passives: [],
+    attackBonus: 0,
+  };
+}
+
+function resolveEnemyEngage(state, log) {
+  for (const enemy of state.enemies) {
+    if (isFightOver(state) || enemy.hp <= 0 || !enemy.engage) continue;
+
+    log.push(event(`${enemy.name} opens with ${enemy.engage.name}.`, {
+      type: "enemyEngage",
+      actorId: enemy.instanceId ?? enemy.id,
+      actorName: enemy.name,
+      sourceId: enemy.engage.id ?? enemy.engage.name,
+      sourceType: "monsterEngage",
+    }));
+    resolveAction({
+      actor: enemy,
+      action: enemy.engage,
+      actionName: enemy.engage.name,
+      sourceId: enemy.engage.id ?? enemy.engage.name,
+      sourceType: "monsterEngage",
+      allies: state.enemies,
+      enemies: [state.player],
+      targetPriority: ["player"],
+      log,
+    });
+  }
 }
 
 function resolvePostCombatRecovery(player, startingHp, recoveryRate, log) {
@@ -233,7 +270,7 @@ function resolveAction({ actor, action, actionName, sourceId, sourceType, allies
       if (consumeReactiveDefense(target, getDamageType(action), actor, actionName, sourceId, sourceType, log)) {
         continue;
       }
-      resolveAttack(actor, target, action, actionName, sourceId, sourceType, log);
+      resolveAttack(actor, target, action, actionName, sourceId, sourceType, enemies, log);
     }
     if (getDamageType(action) === "physical") {
       resolveStatusTriggers(actor, "physicalAttackEnd", log);
@@ -245,7 +282,7 @@ function resolveAction({ actor, action, actionName, sourceId, sourceType, allies
         sourceId,
         sourceType,
       }));
-      resolveAttack(actor, repeatTarget, action, actionName, sourceId, sourceType, log);
+      resolveAttack(actor, repeatTarget, action, actionName, sourceId, sourceType, enemies, log);
       if (getDamageType(action) === "physical") {
         resolveStatusTriggers(actor, "physicalAttackEnd", log);
       }
@@ -289,36 +326,28 @@ function resolveAction({ actor, action, actionName, sourceId, sourceType, allies
       return;
     }
 
-    const summonedInstanceId = `${action.summon.id}-${Date.now()}-${Math.random()}`;
-    allies.push({
-      ...structuredClone(action.summon),
-      instanceId: summonedInstanceId,
-      maxHp: action.summon.hp,
-      mana: action.summon.mana ?? 0,
-      maxMana: action.summon.mana ?? 0,
-      stats: {},
-      derived: {},
-      shield: 0,
-      spellShield: action.summon.spellShield ?? 0,
-      statuses: [],
-      usedOnce: new Set(),
-      passives: [],
-      attackBonus: 0,
-    });
+    const summoned = summonMonster(allies, action.summon);
     log.push(actionEvent(`${actor.name} summons a ${action.summon.name}.`, "summon", actor, null, {
       sourceId,
       sourceType,
-      summonId: action.summon.id,
-      summonInstanceId: summonedInstanceId,
-      summonName: action.summon.name,
-      summonRole: action.summon.role,
-      summonHp: action.summon.hp,
-      summonMaxHp: action.summon.hp,
+      summonId: summoned.id,
+      summonInstanceId: summoned.instanceId,
+      summonName: summoned.name,
+      summonRole: summoned.role,
+      summonHp: summoned.hp,
+      summonMaxHp: summoned.maxHp,
     }));
   }
 }
 
-function resolveAttack(actor, target, action, actionName, sourceId, sourceType, log) {
+function summonMonster(allies, monster) {
+  const summonedInstanceId = `${monster.id}-${Date.now()}-${Math.random()}`;
+  const summoned = createMonsterActor(monster, summonedInstanceId);
+  allies.push(summoned);
+  return summoned;
+}
+
+function resolveAttack(actor, target, action, actionName, sourceId, sourceType, targetAllies, log) {
   const damageMultiplier = statusDamageMultiplier(actor);
   const sourceDamageMultiplier = sourceType === "monsterAction" ? MONSTER_DAMAGE_MULTIPLIER : 1;
   const baseDamage = Math.max(0, Math.round(
@@ -358,6 +387,7 @@ function resolveAttack(actor, target, action, actionName, sourceId, sourceType, 
   const damage = resistanceMultiplier === 0
     ? 0
     : Math.max(1, Math.round(damageBeforeResistance * resistanceMultiplier));
+  const targetHpBeforeDamage = target.hp;
   target.hp = Math.max(0, target.hp - damage);
 
   const damageText = damage === 0
@@ -383,6 +413,8 @@ function resolveAttack(actor, target, action, actionName, sourceId, sourceType, 
     spellShield,
     armor,
   }));
+
+  resolveThresholdEffects(target, targetAllies, log, targetHpBeforeDamage);
 
   if (action.status && target.hp > 0) {
     applyStatus(target, action.status, log, actor, sourceId, sourceType);
@@ -646,11 +678,11 @@ function getEffectiveStatusChance(target, status) {
   return Math.max(0, Math.min(1, status.chance * bossMultiplier));
 }
 
-function resolveStatusTriggers(actor, trigger, log) {
+function resolveStatusTriggers(actor, trigger, log, allies = []) {
   for (const status of actor.statuses) {
     const definition = getStatusDefinition(status.id);
     if (definition.category === "dot" && definition.trigger === trigger) {
-      dealStatusDamage(actor, status, definition.damageLabel, log);
+      dealStatusDamage(actor, status, definition.damageLabel, log, allies);
     }
 
     if (trigger === "setEnd") {
@@ -723,8 +755,9 @@ function resolveBaselineManaRegen(actor, log) {
   }));
 }
 
-function dealStatusDamage(actor, status, label, log) {
+function dealStatusDamage(actor, status, label, log, allies) {
   const amount = Math.max(1, status.amount ?? 1);
+  const hpBeforeDamage = actor.hp;
   actor.hp = Math.max(0, actor.hp - amount);
   log.push(actionEvent(`${actor.name} suffers ${amount} ${label} damage.`, label, actor, actor, {
     sourceId: status.id,
@@ -735,6 +768,63 @@ function dealStatusDamage(actor, status, label, log) {
     actorMaxHp: actor.maxHp,
     targetHp: actor.hp,
     targetMaxHp: actor.maxHp,
+  }));
+  resolveThresholdEffects(actor, allies, log, hpBeforeDamage);
+}
+
+function resolveThresholdEffects(actor, allies, log, hpBeforeEffect = actor.hp) {
+  if (!actor.thresholds?.length) return;
+
+  for (const threshold of actor.thresholds) {
+    const thresholdId = threshold.id ?? `${threshold.effect}:${threshold.hpPercent}`;
+    if (actor.usedThresholds.has(thresholdId)) continue;
+    const crossedThreshold = hpBeforeEffect / actor.maxHp > threshold.hpPercent
+      && actor.hp / actor.maxHp <= threshold.hpPercent;
+    const alreadyBelowThreshold = hpBeforeEffect / actor.maxHp <= threshold.hpPercent
+      && actor.hp / actor.maxHp <= threshold.hpPercent;
+    if (!crossedThreshold && !alreadyBelowThreshold) continue;
+
+    actor.usedThresholds.add(thresholdId);
+
+    if (threshold.effect === "fleeAndSummon") {
+      resolveFleeAndSummon(actor, allies, threshold, thresholdId, log);
+    }
+  }
+}
+
+function resolveFleeAndSummon(actor, allies, threshold, thresholdId, log) {
+  if (threshold.summon) {
+    const summoned = summonMonster(allies, threshold.summon);
+    log.push(actionEvent(
+      threshold.message ?? `${actor.name} creates ${summoned.name} and flees.`,
+      "flee",
+      actor,
+      null,
+      {
+        sourceId: thresholdId,
+        sourceType: "threshold",
+        summonId: summoned.id,
+        summonInstanceId: summoned.instanceId,
+        summonName: summoned.name,
+        summonRole: summoned.role,
+        summonHp: summoned.hp,
+        summonMaxHp: summoned.maxHp,
+      },
+    ));
+  } else {
+    log.push(actionEvent(threshold.message ?? `${actor.name} flees.`, "flee", actor, null, {
+      sourceId: thresholdId,
+      sourceType: "threshold",
+    }));
+  }
+
+  actor.fled = true;
+  actor.hp = 0;
+  log.push(actionEvent(`${actor.name} is gone.`, "fled", actor, actor, {
+    sourceId: thresholdId,
+    sourceType: "threshold",
+    actorFled: true,
+    targetFled: true,
   }));
 }
 

@@ -84,6 +84,7 @@ export const itemCatalog = {
     id: "wornShield",
     name: "Worn Shield",
     type: "action",
+    category: "shield",
     rarity: "poor",
     bonuses: {
       armor: 1,
@@ -432,6 +433,7 @@ export const itemCatalog = {
     id: "manaShield",
     name: "Mana Shield",
     type: "action",
+    category: "shield",
     bonuses: {
       intelligence: 2,
       spellPower: 4,
@@ -450,6 +452,7 @@ export const itemCatalog = {
     id: "batteredShield",
     name: "Battered Shield",
     type: "action",
+    category: "shield",
     bonuses: {
       strength: 2,
       armor: 4,

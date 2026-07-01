@@ -37,6 +37,10 @@ export function getEncounterTargetRules(encounter) {
     for (const action of monster.actions ?? []) {
       if (action.kind === "summon") visit(action.summon);
     }
+
+    for (const threshold of monster.thresholds ?? []) {
+      if (threshold.summon) visit(threshold.summon);
+    }
   };
 
   for (const monster of encounter.monsters) {

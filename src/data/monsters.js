@@ -20,6 +20,20 @@ const briarVine = {
   ],
 };
 
+const mordrakeIllusion = {
+  id: "mordrakeIllusion",
+  name: "Mordrake's Illusion",
+  role: "decoy",
+  hp: 76,
+  armor: 2,
+  mana: 40,
+  actions: [
+    { name: "False Ward", kind: "defense", status: { id: "ward", blockChance: 0.45, damageType: "spell" }, manaCost: 4 },
+    { name: "Mirror Guard", kind: "defense", status: { id: "defender", blockChance: 0.35, damageType: "physical" }, manaCost: 4 },
+    { name: "Splintered Doubt", kind: "status", status: { id: "stunned", chance: 0.2, duration: 1 }, manaCost: 6 },
+  ],
+};
+
 export const encounters = [
   {
     id: "oldWoods01",
@@ -252,6 +266,75 @@ export const encounters = [
         ],
       },
       { ...briarVine, name: "Awakened Briar", hp: 22 },
+    ],
+  },
+  {
+    id: "oldWoods11",
+    area: "Old Woods",
+    fight: 11,
+    boss: true,
+    bossTier: "mordrake",
+    name: "Mordrake",
+    initiate: true,
+    monsters: [
+      {
+        id: "mordrake",
+        name: "Mordrake",
+        role: "caster",
+        hp: 92,
+        armor: 3,
+        mana: 70,
+        thresholds: [
+          {
+            id: "mordrakeEscape",
+            hpPercent: 0.5,
+            effect: "fleeAndSummon",
+            summon: mordrakeIllusion,
+            message: "Mordrake splits into a full-blooded illusion and slips between the trees.",
+          },
+        ],
+        actions: [
+          { name: "Keep Away", kind: "status", status: { id: "stunned", chance: 0.25, duration: 1 }, manaCost: 8 },
+          { name: "Crown Ward", kind: "defense", status: { id: "ward", blockChance: 0.5, damageType: "spell" }, manaCost: 5 },
+          { name: "Turn Aside Steel", kind: "defense", status: { id: "defender", blockChance: 0.4, damageType: "physical" }, manaCost: 5 },
+          { name: "Desperate Renewal", kind: "buff", status: { id: "desperateRenewal", duration: 3, hpRegen: 4 }, manaCost: 8 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "ashWastelands01",
+    area: "Ash Wastelands",
+    fight: 1,
+    name: "Ash Gate Guardians",
+    initiate: false,
+    enemyInitiate: true,
+    monsters: [
+      {
+        id: "ashGateGuardian",
+        name: "Ash Gate Guardian",
+        role: "brute",
+        hp: 64,
+        armor: 4,
+        engage: { name: "Gate Ambush", kind: "attack", damage: { flat: 9 }, status: { id: "stunned", chance: 0.2, duration: 1 } },
+        actions: [
+          { name: "Charred Halberd", kind: "attack", damage: { flat: 9 } },
+          { name: "Brace the Gate", kind: "defense", status: { id: "defender", blockChance: 0.3, damageType: "physical" } },
+        ],
+      },
+      {
+        id: "ashGateAcolyte",
+        name: "Ash Gate Acolyte",
+        role: "caster",
+        hp: 46,
+        armor: 1,
+        mana: 40,
+        engage: { name: "Ashen Warning", kind: "status", status: { id: "rooted", duration: 2, armor: -3 }, manaCost: 5 },
+        actions: [
+          { name: "Ember Seal", kind: "spellAttack", damageType: "spell", elementType: "fire", damage: { flat: 8 }, manaCost: 5 },
+          { name: "Smoke Ward", kind: "defense", status: { id: "ward", blockChance: 0.3, damageType: "spell" }, manaCost: 4 },
+        ],
+      },
     ],
   },
 ];

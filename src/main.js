@@ -12,6 +12,7 @@ import {
 import { encounters } from "./data/monsters.js";
 import { starterPlayer } from "./data/player.js";
 import { rarityTable, rewardTemplates } from "./data/rewards.js";
+import { storyScreens } from "./data/story.js";
 
 const areaBackgrounds = {
   "Old Woods": "assets/backgrounds/old-woods-duel.png",
@@ -38,6 +39,7 @@ const encounterPortraits = {
   oldWoods08: "assets/opponents/old-woods-08-briar-archer.png",
   oldWoods09: "assets/opponents/old-woods-09-briar-witch.png",
   oldWoods10: "assets/opponents/old-woods-10-briarheart-stag.png",
+  oldWoods11: "assets/opponents/mordrake.png",
 };
 
 const app = {
@@ -52,6 +54,8 @@ const app = {
   isPlaying: false,
   playbackToken: 0,
   portraitAttribute: "strength",
+  activeStoryId: "opening",
+  storyQueue: [],
 };
 
 const elements = {
@@ -85,12 +89,20 @@ const elements = {
   debugItemStatus: document.querySelector("#debug-item-status"),
   debugMonstersPopover: document.querySelector("#debug-monsters-popover"),
   debugMonsterList: document.querySelector("#debug-monster-list"),
+  storyOverlay: document.querySelector("#story-overlay"),
+  storyEyebrow: document.querySelector("#story-eyebrow"),
+  storyTitle: document.querySelector("#story-title"),
+  storySubtitle: document.querySelector("#story-subtitle"),
+  storyImage: document.querySelector("#story-image"),
+  storyBody: document.querySelector("#story-body"),
+  storyContinue: document.querySelector("#story-continue"),
 };
 
 elements.startFight.addEventListener("click", startFight);
 elements.resetRun.addEventListener("click", resetRun);
 elements.debugItems.addEventListener("click", openDebugItems);
 elements.debugMonsters.addEventListener("click", openDebugMonsters);
+elements.storyContinue.addEventListener("click", continueStory);
 document.querySelectorAll("[data-close-debug]").forEach((button) => {
   button.addEventListener("click", closeDebugPopovers);
 });
@@ -106,7 +118,7 @@ document.addEventListener("keydown", (event) => {
 render();
 
 async function startFight() {
-  if (app.isPlaying || app.currentRewards.length > 0) return;
+  if (app.activeStoryId || app.isPlaying || app.currentRewards.length > 0) return;
 
   const encounter = currentEncounter();
   if (!encounter) return;
@@ -158,10 +170,13 @@ function resetRun() {
   app.narration = "Choose a plan and start the fight.";
   app.isPlaying = false;
   app.portraitAttribute = "strength";
+  app.activeStoryId = "opening";
+  app.storyQueue = [];
   render();
 }
 
 function chooseReward(reward) {
+  const completedEncounter = app.lastEncounter;
   reward.apply(app.player);
   const { derived } = getPlayerStatBlock(app.player);
   app.player.currentHp = Math.min(app.player.currentHp ?? derived.maxHp, derived.maxHp);
@@ -171,6 +186,7 @@ function chooseReward(reward) {
   app.combatView = null;
   app.visibleLog = [];
   app.narration = "Choose a plan and start the fight.";
+  queueStoryForCompletedEncounter(completedEncounter);
   render();
 }
 
@@ -189,16 +205,17 @@ function render() {
   const playerMana = combatPlayer?.mana ?? derived.maxMana;
 
   elements.runSummary.textContent = encounter
-    ? `${encounter.area} - Fight ${encounter.fight} / 10`
+    ? `${encounter.area} - Fight ${encounter.fight} / ${getAreaFightCount(encounter.area)}`
     : "Old Woods cleared";
   elements.startFight.disabled = app.isPlaying
+    || Boolean(app.activeStoryId)
     || app.currentRewards.length > 0
     || !encounter
     || playerHp <= 0;
-  elements.targetPriority.classList.toggle("disabled", app.isPlaying);
-  elements.resetRun.disabled = app.isPlaying;
-  elements.debugItems.disabled = app.isPlaying;
-  elements.debugMonsters.disabled = app.isPlaying;
+  elements.targetPriority.classList.toggle("disabled", app.isPlaying || Boolean(app.activeStoryId));
+  elements.resetRun.disabled = app.isPlaying || Boolean(app.activeStoryId);
+  elements.debugItems.disabled = app.isPlaying || Boolean(app.activeStoryId);
+  elements.debugMonsters.disabled = app.isPlaying || Boolean(app.activeStoryId);
   elements.combatNarration.textContent = app.narration;
   elements.combatNarration.classList.toggle("playing", app.isPlaying);
   elements.playerName.textContent = app.player.name;
@@ -216,6 +233,66 @@ function render() {
   renderTargeting();
   renderLog();
   renderRewards();
+  renderStoryOverlay();
+}
+
+function showStory(id) {
+  if (!storyScreens[id]) return;
+
+  app.activeStoryId = id;
+  render();
+}
+
+function queueStory(id) {
+  if (!storyScreens[id]) return;
+  app.storyQueue.push(id);
+
+  if (!app.activeStoryId) {
+    app.activeStoryId = app.storyQueue.shift();
+    render();
+  }
+}
+
+function queueStoryForCompletedEncounter(encounter) {
+  if (encounter?.id === "oldWoods11") {
+    showStory("oldWoodsMordrakeEscape");
+  }
+}
+
+function continueStory() {
+  if (!app.activeStoryId || elements.storyOverlay.classList.contains("leaving")) return;
+
+  elements.storyOverlay.classList.add("leaving");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => {
+    app.activeStoryId = app.storyQueue.shift() ?? null;
+    elements.storyOverlay.classList.remove("leaving");
+    render();
+  }, 220);
+}
+
+function renderStoryOverlay() {
+  const story = storyScreens[app.activeStoryId];
+  document.body.classList.toggle("story-active", Boolean(story));
+
+  if (!story) {
+    elements.storyOverlay.hidden = true;
+    elements.storyOverlay.classList.remove("visible");
+    return;
+  }
+
+  elements.storyOverlay.hidden = false;
+  elements.storyOverlay.classList.toggle("visible", !elements.storyOverlay.classList.contains("leaving"));
+  elements.storyEyebrow.textContent = story.eyebrow ?? "";
+  elements.storyTitle.textContent = story.title;
+  elements.storySubtitle.textContent = story.subtitle ?? "";
+  elements.storyImage.setAttribute("aria-label", story.imageLabel ?? story.title);
+  elements.storyImage.className = story.image ? "story-image" : "story-image-placeholder";
+  elements.storyImage.innerHTML = story.image
+    ? `<img src="${story.image}" alt="${story.imageLabel ?? story.title}">`
+    : story.imageLabel ?? "Story image";
+  elements.storyBody.innerHTML = story.body.map((line) => `<p>${line}</p>`).join("");
+  elements.storyContinue.textContent = story.cta ?? "Continue";
 }
 
 function renderPlayerPortrait(effectiveStats) {
@@ -314,6 +391,7 @@ function renderItemCard(item, unlocked = true) {
 
 function renderSlotCycler(slotType, index, selectedId, itemType, unlocked) {
   const options = inventoryOptions(itemType, selectedId, slotType, index);
+  const enabledOptions = options.filter((option) => !option.disabled || option.id === selectedId);
   const selected = options.find((option) => option.id === selectedId) ?? options[0];
   const selectedIndex = Math.max(0, options.findIndex((option) => option.id === selected?.id));
   return `
@@ -322,7 +400,7 @@ function renderSlotCycler(slotType, index, selectedId, itemType, unlocked) {
       class="slot-cycler"
       data-slot-type="${slotType}"
       data-slot-index="${index}"
-      ${app.isPlaying || !unlocked || options.length <= 1 ? "disabled" : ""}
+      ${app.isPlaying || !unlocked || enabledOptions.length <= 1 ? "disabled" : ""}
     >
       <span class="slot-cycler-main">
         ${renderIcon(selected?.icon, selected?.label ?? "Empty", "slot-icon")}
@@ -341,6 +419,7 @@ function inventoryOptions(itemType, selectedId, slotType, slotIndex) {
     const selectedCount = countEquipped(id, slotType, slotIndex);
     const ownedCount = refs.filter((ownedId) => ownedId === id).length;
     const remaining = ownedCount - selectedCount;
+    const blockedByShieldLimit = id !== selectedId && isShieldItem(item) && hasEquippedShield(slotType, slotIndex);
     const suffix = ownedCount > 1 ? ` (${remaining} free)` : "";
 
     return {
@@ -348,9 +427,21 @@ function inventoryOptions(itemType, selectedId, slotType, slotIndex) {
       label: `${item.name}${suffix}`,
       rarity: item.rarity,
       icon: item.icon,
-      disabled: id !== selectedId && remaining <= 0,
+      disabled: id !== selectedId && (remaining <= 0 || blockedByShieldLimit),
     };
   });
+}
+
+function isShieldItem(item) {
+  return item.category === "shield";
+}
+
+function hasEquippedShield(slotType, slotIndex) {
+  return app.player.actions.some((actionId, index) => (
+    (slotType !== "action" || slotIndex !== index)
+    && isActionSlotUnlocked(app.player, index)
+    && isShieldItem(resolveItem(app.player, actionId))
+  ));
 }
 
 function countEquipped(id, slotType, slotIndex) {
@@ -425,7 +516,7 @@ function renderEncounter(encounter) {
           <h3>${enemy.name}</h3>
           <p class="meta">${enemy.role}</p>
           <div class="bar"><span style="width: ${percent(hp, enemy.maxHp)}%"></span></div>
-          <p class="meta">${hp} / ${enemy.maxHp} HP</p>
+          <p class="meta">${enemy.fled ? "Fled" : `${hp} / ${enemy.maxHp} HP`}</p>
         </article>
       `;
     })
@@ -631,7 +722,7 @@ function renderDebugMonsters() {
   elements.debugMonsterList.innerHTML = encounters
     .map((encounter, index) => `
       <button type="button" class="debug-encounter" data-debug-encounter="${index}">
-        <span>${encounter.area} - Fight ${encounter.fight} / 10</span>
+        <span>${encounter.area} - Fight ${encounter.fight} / ${getAreaFightCount(encounter.area)}</span>
         <strong>${encounter.name}</strong>
         <span class="meta">${encounter.monsters.map((monster) => monster.name).join(", ")}</span>
       </button>
@@ -695,7 +786,7 @@ function flash(element, className) {
 
 function playbackDelay(entry) {
   if (entry.important) return 1300;
-  if (["damage", "heal", "lifeSteal", "recovery", "summon", "doubleStrike", "poison", "bleed", "miss", "engageReplay", "skip", "regen", "manaRegen", "defense", "block", "blockFail", "defenseExpire"].includes(entry.type)) return 1200;
+  if (["damage", "heal", "lifeSteal", "recovery", "summon", "doubleStrike", "poison", "bleed", "miss", "enemyEngage", "engageReplay", "skip", "regen", "manaRegen", "defense", "block", "blockFail", "defenseExpire"].includes(entry.type)) return 1200;
   return 950;
 }
 
@@ -744,6 +835,7 @@ function applyEventToCombatView(entry) {
     maxMana: entry.actorMaxMana,
     shield: entry.actorShield,
     spellShield: entry.actorSpellShield,
+    fled: entry.actorFled,
   });
 
   updateCombatViewActor(entry.targetId, {
@@ -753,9 +845,10 @@ function applyEventToCombatView(entry) {
     maxMana: entry.targetMaxMana,
     shield: entry.targetShield,
     spellShield: entry.targetSpellShield,
+    fled: entry.targetFled,
   });
 
-  if (entry.type === "summon" && entry.summonInstanceId) {
+  if (entry.summonInstanceId && !app.combatView.enemies.some((enemy) => enemy.instanceId === entry.summonInstanceId)) {
     app.combatView.enemies.push({
       id: entry.summonId,
       instanceId: entry.summonInstanceId,
@@ -765,6 +858,10 @@ function applyEventToCombatView(entry) {
       maxHp: entry.summonMaxHp ?? 1,
     });
   }
+}
+
+function getAreaFightCount(area) {
+  return encounters.filter((encounter) => encounter.area === area).length;
 }
 
 function updateCombatViewActor(id, values) {
