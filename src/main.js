@@ -40,6 +40,13 @@ const encounterPortraits = {
   oldWoods09: "assets/opponents/old-woods-09-briar-witch.png",
   oldWoods10: "assets/opponents/old-woods-10-briarheart-stag.png",
   oldWoods11: "assets/opponents/mordrake.png",
+  ashWastelands01: "assets/opponents/ash-wastelands-01-ash-skitterers.png",
+  ashWastelands02: "assets/opponents/ash-wastelands-02-cinder-hound.png",
+  ashWastelands03: "assets/opponents/ash-wastelands-03-glassback-beetle.png",
+  ashWastelands04: "assets/opponents/ash-wastelands-01-gate-guardians.png",
+  ashWastelands05: "assets/opponents/ash-wastelands-05-cindermaw.png",
+  ashWastelands06: "assets/opponents/ash-wastelands-06-ember-wraiths.png",
+  ashWastelands11: "assets/opponents/mordrake.png",
 };
 
 const app = {
