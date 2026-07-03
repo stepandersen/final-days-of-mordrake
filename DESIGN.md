@@ -29,6 +29,14 @@ Cindermaw is the mid-boss cousin of that family, but should read as a molten lio
 
 Reference asset: `assets/opponents/ash-wastelands-05-cindermaw.png`
 
+Scorched Packs are coordinated ash-hide hunters, usually shown as multiple lean hounds with a smaller skitterer threat. They should feel fast and aggressive, with motion and numbers doing the intimidation rather than boss-scale mass.
+
+Reference asset: `assets/opponents/ash-wastelands-07-scorched-pack.png`
+
+Ash Burrowers use the Mordrake-aligned dark metal language on a non-humanoid brute: blackened armor plates, ember rune engravings, huge digging claws, and an armored biting maw. They should look like dark armor magic fused onto a subterranean beast.
+
+Reference asset: `assets/opponents/ash-wastelands-08-ash-burrower.png`
+
 Glassback Beetles define brittle volcanic-glass armor creatures: low heavy bodies, burnt chitin undersides, translucent obsidian and amber shell plates, and glowing seams beneath the shell. They should feel grown from cooled lava and glass, distinct from forged armor and living ash-hide beasts.
 
 Reference asset: `assets/opponents/ash-wastelands-03-glassback-beetle.png`
@@ -36,3 +44,15 @@ Reference asset: `assets/opponents/ash-wastelands-03-glassback-beetle.png`
 Ember Wraiths define the area's spectral caster look: drifting ash-robes, hollow faces, ember cores, smoke-torn edges, and partial insubstantiality. They should feel like burned spirits, not physical ash-hide beasts or armored servants.
 
 Reference asset: `assets/opponents/ash-wastelands-06-ember-wraiths.png`
+
+Pyre Shamans define the area's ritual humanoid look: charcoal wrappings, ash masks or body paint, scorched bone ornaments, ember beads, strange headdresses, and summoned cinderlings. They should feel like fire-priests of the wasteland, distinct from Mordrake's armored servants.
+
+Reference asset: `assets/opponents/ash-wastelands-09-pyre-shaman.png`
+
+The Cinder Colossus is the Ash Wastelands area boss: a huge volcanic construct of basalt-black stone, charred furnace-metal, molten fists, smoky vents, and a visible kindled core. It should read as armored, fire-immune, quake-heavy, and self-renewing from the core.
+
+Reference asset: `assets/opponents/ash-wastelands-10-cinder-colossus.png`
+
+Mordrake and the Ash Warden should read as a protected chase encounter: the Warden dominates the foreground as an interposing dark-metal halberd brute, while Mordrake remains recognizable behind him through the Black Crown, pale hair, red engravings, and evasive posture.
+
+Reference asset: `assets/opponents/ash-wastelands-11-mordrake-ash-warden.png`

@@ -40,9 +40,10 @@ export const rewardTemplates = [
   { id: "sageglassPrismReward", lane: "intelligence", kind: "item", templateId: "sageglassPrism" },
 
   { id: "tacticalEye", lane: "utility", kind: "targeting", rule: "lowestHp", name: "Tactical Eye", description: "Unlock Lowest HP priority" },
-  { id: "giantReadersLens", lane: "utility", kind: "targeting", rule: "highestHp", name: "Giant-Reader's Lens", description: "Unlock Highest HP priority" },
-  { id: "witchHunterSeal", lane: "utility", kind: "targeting", rule: "summoner", name: "Witch Hunter Seal", description: "Unlock Summoner priority" },
-  { id: "venomousInstinct", lane: "utility", kind: "targeting", rule: "afflicted", name: "Venomous Instinct", description: "Unlock Afflicted priority" },
-  { id: "spreadingInstinct", lane: "utility", kind: "targeting", rule: "unafflicted", name: "Spreading Instinct", description: "Unlock Unafflicted priority" },
+  { id: "magehunterMark", lane: "utility", kind: "targeting", rule: "casters", name: "Magehunter Mark", description: "Unlock Casters priority" },
+  { id: "hawkSightCharm", lane: "utility", kind: "targeting", rule: "skirmishers", name: "Hawk-Sight Charm", description: "Unlock Skirmishers priority" },
+  { id: "emberTracker", lane: "utility", kind: "targeting", rule: "spawns", name: "Ember Tracker", description: "Unlock Spawns priority" },
+  { id: "mercilessVow", lane: "utility", kind: "targeting", rule: "healers", name: "Merciless Vow", description: "Unlock Healers priority" },
+  { id: "threatReader", lane: "utility", kind: "targeting", rule: "highestDamage", name: "Threat Reader", description: "Unlock Highest Damage priority" },
   { id: "fieldRecovery", lane: "utility", kind: "recovery", name: "Field Recovery" },
 ];

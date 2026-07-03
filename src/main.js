@@ -46,7 +46,11 @@ const encounterPortraits = {
   ashWastelands04: "assets/opponents/ash-wastelands-01-gate-guardians.png",
   ashWastelands05: "assets/opponents/ash-wastelands-05-cindermaw.png",
   ashWastelands06: "assets/opponents/ash-wastelands-06-ember-wraiths.png",
-  ashWastelands11: "assets/opponents/mordrake.png",
+  ashWastelands07: "assets/opponents/ash-wastelands-07-scorched-pack.png",
+  ashWastelands08: "assets/opponents/ash-wastelands-08-ash-burrower.png",
+  ashWastelands09: "assets/opponents/ash-wastelands-09-pyre-shaman.png",
+  ashWastelands10: "assets/opponents/ash-wastelands-10-cinder-colossus.png",
+  ashWastelands11: "assets/opponents/ash-wastelands-11-mordrake-ash-warden.png",
 };
 
 const app = {
@@ -263,6 +267,8 @@ function queueStory(id) {
 function queueStoryForCompletedEncounter(encounter) {
   if (encounter?.id === "oldWoods11") {
     showStory("oldWoodsMordrakeEscape");
+  } else if (encounter?.id === "ashWastelands11") {
+    showStory("ashWastelandsMordrakeEscape");
   }
 }
 
@@ -557,22 +563,21 @@ function renderTargeting() {
   const labels = new Map(targetRules.map((rule) => [rule.id, rule]));
   elements.targetPriority.innerHTML = app.player.targeting
     .map((rule, index) => {
-      const conditionId = rule.startsWith("rule:") ? rule.slice("rule:".length) : null;
+      const modeId = rule.startsWith("mode:") ? rule.slice("mode:".length) : rule;
       const target = labels.get(rule);
-      const label = conditionId ? targetingLabels[conditionId] : target?.label ?? rule;
-      const count = target && target.count > 1 ? `<span class="target-count">${target.count}</span>` : "";
+      const label = target?.label ?? targetingLabels[modeId] ?? rule;
       const separator = index < app.player.targeting.length - 1
         ? '<span class="priority-arrow" aria-hidden="true">&gt;</span>'
         : "";
       return `
         <button
           type="button"
-          class="priority-chip ${conditionId ? "conditional" : ""}"
+          class="priority-chip ${modeId !== "closest" ? "conditional" : ""}"
           data-priority-index="${index}"
           title="${index === 0 ? "Move to the end" : "Move one step forward"}"
-          ${app.isPlaying ? "disabled" : ""}
+          ${app.isPlaying || app.activeStoryId ? "disabled" : ""}
         >
-          ${label}${count}
+          ${label}
         </button>
         ${separator}
       `;
@@ -585,7 +590,7 @@ function renderTargeting() {
 }
 
 function movePriorityRule(index) {
-  if (app.isPlaying || app.player.targeting.length < 2) return;
+  if (app.isPlaying || app.activeStoryId || app.player.targeting.length < 2) return;
 
   const next = [...app.player.targeting];
   if (index === 0) {

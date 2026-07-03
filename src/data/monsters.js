@@ -131,7 +131,7 @@ export const encounters = [
       {
         id: "forestPoacher",
         name: "Forest Poacher",
-        role: "ranged",
+        role: "skirmisher",
         hp: 34,
         armor: 0,
         actions: [
@@ -232,7 +232,7 @@ export const encounters = [
       {
         id: "rootbinderScout",
         name: "Rootbinder Scout",
-        role: "caster",
+        role: "skirmisher",
         hp: 38,
         armor: 1,
         mana: 36,
@@ -254,7 +254,7 @@ export const encounters = [
       {
         id: "briarArcher",
         name: "Briar Archer",
-        role: "ranged",
+        role: "skirmisher",
         hp: 38,
         armor: 1,
         actions: [
