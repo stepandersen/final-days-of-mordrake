@@ -4,11 +4,13 @@ import { getPlayerStatBlock } from "./core/formulas.js";
 import { describeItemRules, getInventoryItem, getInventoryRef, resolveItem } from "./core/items.js";
 import { selectPortraitAttribute } from "./core/portraits.js";
 import { actionSlotRules, isActionSlotUnlocked, isPassiveSlotUnlocked, passiveSlotRules } from "./core/slots.js";
+import { getStatusDefinition, getStatusLabel } from "./core/statuses.js";
 import {
   getEncounterTargetRules,
   reconcileTargetPriority,
   targetingLabels,
 } from "./core/targeting.js";
+import { createCemeteryEncounter } from "./data/cemetery.js";
 import { encounters } from "./data/monsters.js";
 import { starterPlayer } from "./data/player.js";
 import { rarityTable, rewardTemplates } from "./data/rewards.js";
@@ -64,9 +66,18 @@ const app = {
   narration: "Choose a plan and start the fight.",
   isPlaying: false,
   playbackToken: 0,
+  combatVisual: null,
   portraitAttribute: "strength",
   activeStoryId: "opening",
   storyQueue: [],
+  cemetery: {
+    visits: 0,
+    active: false,
+    rematchIndex: null,
+    wins: 0,
+    winsNeeded: 0,
+    currentEncounter: null,
+  },
 };
 
 const elements = {
@@ -80,8 +91,10 @@ const elements = {
   playerHpText: document.querySelector("#player-hp-text"),
   playerManaBar: document.querySelector("#player-mana-bar"),
   playerManaText: document.querySelector("#player-mana-text"),
+  playerStatuses: document.querySelector("#player-statuses"),
   playerPortrait: document.querySelector("#player-portrait"),
   playerPortraitImage: document.querySelector("#player-portrait-image"),
+  combatFx: document.querySelector("#combat-fx"),
   enemyPortrait: document.querySelector("#enemy-portrait"),
   enemyPortraitImage: document.querySelector("#enemy-portrait-image"),
   enemyPortraitPlaceholder: document.querySelector("#enemy-portrait-placeholder"),
@@ -138,6 +151,7 @@ async function startFight() {
   const playbackToken = app.playbackToken + 1;
 
   app.playbackToken = playbackToken;
+  app.combatVisual = null;
   app.isPlaying = true;
   app.lastCombat = null;
   app.lastEncounter = encounter;
@@ -146,6 +160,9 @@ async function startFight() {
   app.currentRewards = [];
   app.narration = `${encounter.name} begins.`;
   render();
+  document.querySelector(".arena-panel")?.scrollIntoView({ block: "start", behavior: "smooth" });
+  await wait(180);
+  if (app.playbackToken !== playbackToken) return;
 
   await playCombatLog(result.log, playbackToken);
   if (app.playbackToken !== playbackToken) {
@@ -155,6 +172,7 @@ async function startFight() {
   app.isPlaying = false;
   app.lastCombat = result;
   app.combatView = null;
+  app.combatVisual = null;
   app.visibleLog = result.log;
   app.narration = result.victory ? "Victory." : "Defeat.";
   app.player.currentHp = result.player.hp;
@@ -162,7 +180,13 @@ async function startFight() {
   if (result.victory) {
     app.player.wins += 1;
     app.currentRewards = createRewardChoices(app.player);
-    app.encounterIndex += 1;
+    if (app.cemetery.active) {
+      app.cemetery.wins += 1;
+    } else {
+      app.encounterIndex += 1;
+    }
+  } else {
+    enterCemetery();
   }
 
   render();
@@ -177,12 +201,14 @@ function resetRun() {
   app.lastCombat = null;
   app.lastEncounter = null;
   app.combatView = null;
+  app.combatVisual = null;
   app.visibleLog = [];
   app.narration = "Choose a plan and start the fight.";
   app.isPlaying = false;
   app.portraitAttribute = "strength";
   app.activeStoryId = "opening";
   app.storyQueue = [];
+  app.cemetery = createEmptyCemeteryState();
   render();
 }
 
@@ -195,28 +221,37 @@ function chooseReward(reward) {
   app.lastCombat = null;
   app.lastEncounter = null;
   app.combatView = null;
+  app.combatVisual = null;
   app.visibleLog = [];
   app.narration = "Choose a plan and start the fight.";
-  queueStoryForCompletedEncounter(completedEncounter);
+  if (completedEncounter?.cemetery) {
+    continueCemeteryAfterReward();
+  } else {
+    queueStoryForCompletedEncounter(completedEncounter);
+  }
   render();
 }
 
 function currentEncounter() {
+  if (app.cemetery.active) {
+    return app.cemetery.currentEncounter;
+  }
   return encounters[app.encounterIndex] ?? null;
 }
 
 function render() {
   const statBlock = getPlayerStatBlock(app.player);
   const derived = statBlock.derived;
-  const encounter = app.lastCombat || app.isPlaying
+  const showResolvedCombat = app.isPlaying || app.currentRewards.length > 0;
+  const encounter = showResolvedCombat
     ? app.lastEncounter
     : currentEncounter();
-  const combatPlayer = app.combatView?.player ?? app.lastCombat?.player;
+  const combatPlayer = app.combatView?.player ?? (showResolvedCombat ? app.lastCombat?.player : null);
   const playerHp = combatPlayer?.hp ?? Math.min(app.player.currentHp ?? derived.maxHp, derived.maxHp);
   const playerMana = combatPlayer?.mana ?? derived.maxMana;
 
   elements.runSummary.textContent = encounter
-    ? `${encounter.area} - Fight ${encounter.fight} / ${getAreaFightCount(encounter.area)}`
+    ? `${encounter.area} - Fight ${encounter.fight} / ${getEncounterFightCount(encounter)}`
     : "Old Woods cleared";
   elements.startFight.disabled = app.isPlaying
     || Boolean(app.activeStoryId)
@@ -229,6 +264,8 @@ function render() {
   elements.debugMonsters.disabled = app.isPlaying || Boolean(app.activeStoryId);
   elements.combatNarration.textContent = app.narration;
   elements.combatNarration.classList.toggle("playing", app.isPlaying);
+  elements.playerStatuses.innerHTML = renderStatusChips(combatPlayer?.statuses ?? []);
+  elements.playerPortrait.closest(".combatant").classList.toggle("pulse", app.combatVisual?.pulseIds?.includes("player") ?? false);
   elements.playerName.textContent = app.player.name;
   elements.playerLevel.textContent = statBlock.level;
   renderPlayerPortrait(statBlock.effectiveStats);
@@ -270,6 +307,63 @@ function queueStoryForCompletedEncounter(encounter) {
   } else if (encounter?.id === "ashWastelands11") {
     showStory("ashWastelandsMordrakeEscape");
   }
+}
+
+function enterCemetery() {
+  const { derived } = getPlayerStatBlock(app.player);
+  const rematchIndex = app.cemetery.active
+    ? app.cemetery.rematchIndex
+    : app.encounterIndex;
+
+  app.cemetery.visits += 1;
+  app.cemetery.active = true;
+  app.cemetery.rematchIndex = rematchIndex;
+  app.cemetery.wins = 0;
+  app.cemetery.winsNeeded = app.cemetery.visits;
+  app.cemetery.currentEncounter = createCemeteryEncounter({
+    rematchIndex,
+    visit: app.cemetery.visits,
+    step: 1,
+  });
+  app.lastCombat = null;
+  app.lastEncounter = null;
+  app.visibleLog = [];
+  app.player.currentHp = Math.max(1, Math.floor(derived.maxHp * 0.5));
+  app.narration = `Death opens the cemetery. Win ${app.cemetery.winsNeeded} fight${app.cemetery.winsNeeded === 1 ? "" : "s"} to return.`;
+}
+
+function continueCemeteryAfterReward() {
+  if (!app.cemetery.active) return;
+
+  if (app.cemetery.wins >= app.cemetery.winsNeeded) {
+    const rematchIndex = app.cemetery.rematchIndex;
+    app.cemetery.active = false;
+    app.cemetery.rematchIndex = null;
+    app.cemetery.wins = 0;
+    app.cemetery.winsNeeded = 0;
+    app.cemetery.currentEncounter = null;
+    app.encounterIndex = rematchIndex;
+    app.narration = "You claw your way back to the chase.";
+    return;
+  }
+
+  app.cemetery.currentEncounter = createCemeteryEncounter({
+    rematchIndex: app.cemetery.rematchIndex,
+    visit: app.cemetery.visits,
+    step: app.cemetery.wins + 1,
+  });
+  app.narration = `The cemetery holds you. ${app.cemetery.winsNeeded - app.cemetery.wins} fight${app.cemetery.winsNeeded - app.cemetery.wins === 1 ? "" : "s"} remain.`;
+}
+
+function createEmptyCemeteryState() {
+  return {
+    visits: 0,
+    active: false,
+    rematchIndex: null,
+    wins: 0,
+    winsNeeded: 0,
+    currentEncounter: null,
+  };
 }
 
 function continueStory() {
@@ -509,6 +603,7 @@ function updateLoadoutSlot(slotType, index, id) {
 
 function renderEncounter(encounter) {
   renderOpponentPortrait(encounter);
+  renderCombatFx();
 
   if (!encounter) {
     elements.enemyList.innerHTML = "";
@@ -524,16 +619,53 @@ function renderEncounter(encounter) {
   elements.enemyList.innerHTML = enemies
     .map((enemy) => {
       const hp = Math.max(0, enemy.hp);
+      const pulse = app.combatVisual?.pulseIds?.includes(enemy.instanceId) || app.combatVisual?.pulseIds?.includes(enemy.id);
       return `
-        <article class="card enemy-card ${hp <= 0 ? "defeated" : ""}">
+        <article class="card enemy-card ${hp <= 0 ? "defeated" : ""} ${pulse ? "pulse" : ""}">
           <h3>${enemy.name}</h3>
           <p class="meta">${enemy.role}</p>
+          ${renderStatusRow(enemy.statuses)}
           <div class="bar"><span style="width: ${percent(hp, enemy.maxHp)}%"></span></div>
           <p class="meta">${enemy.fled ? "Fled" : `${hp} / ${enemy.maxHp} HP`}</p>
         </article>
       `;
     })
     .join("");
+}
+
+function renderCombatFx() {
+  const visual = app.combatVisual;
+  if (!visual) {
+    elements.combatFx.innerHTML = "";
+    return;
+  }
+
+  const action = visual.action
+    ? `
+      <div
+        class="action-fx ${visual.action.mode}"
+        style="--fx-x: ${visual.action.x}; --fx-y: ${visual.action.y}; --fx-end-x: ${visual.action.endX}; --fx-end-y: ${visual.action.endY};"
+        title="${visual.action.label}"
+      >
+        ${visual.action.icon
+          ? `<img src="${visual.action.icon}" alt="">`
+          : `<span class="action-fx-symbol">${visual.action.symbol}</span>`}
+      </div>
+    `
+    : "";
+  const result = visual.result
+    ? `
+      <div
+        class="result-fx ${visual.result.kind}"
+        style="--result-x: ${visual.result.x}; --result-y: ${visual.result.y};"
+      >
+        ${visual.result.icon ? `<span aria-hidden="true">${visual.result.icon}</span>` : ""}
+        <span>${visual.result.text}</span>
+      </div>
+    `
+    : "";
+
+  elements.combatFx.innerHTML = `${action}${result}`;
 }
 
 function renderOpponentPortrait(encounter) {
@@ -750,10 +882,12 @@ function selectDebugEncounter(index) {
   app.playbackToken += 1;
   app.encounterIndex = index;
   app.player.wins = index;
+  app.cemetery = createEmptyCemeteryState();
   app.currentRewards = [];
   app.lastCombat = null;
   app.lastEncounter = null;
   app.combatView = null;
+  app.combatVisual = null;
   app.visibleLog = [];
   app.narration = "Choose a plan and start the fight.";
   app.isPlaying = false;
@@ -778,14 +912,46 @@ async function playCombatLog(log, playbackToken) {
 
     app.visibleLog = [entry, ...app.visibleLog];
     app.narration = entry.text;
-    applyEventToCombatView(entry);
-    renderCombatView();
     elements.combatNarration.textContent = app.narration;
     renderLog();
     flash(elements.combatNarration, "flash");
 
-    await wait(playbackDelay(entry));
+    await playCombatEvent(entry, playbackDelay(entry), playbackToken);
   }
+
+  app.combatVisual = null;
+  renderCombatView();
+}
+
+async function playCombatEvent(entry, delay, playbackToken) {
+  const visual = createCombatVisual(entry);
+  if (!visual) {
+    applyEventToCombatView(entry);
+    renderCombatView();
+    await wait(delay);
+    return;
+  }
+
+  app.combatVisual = { action: visual.action, result: null, pulseIds: [] };
+  renderCombatView();
+
+  const windup = Math.min(460, Math.max(220, Math.round(delay * 0.38)));
+  await wait(windup);
+  if (app.playbackToken !== playbackToken) return;
+
+  applyEventToCombatView(entry);
+  app.combatVisual = {
+    action: visual.action,
+    result: visual.result,
+    pulseIds: visual.pulseIds,
+  };
+  renderCombatView();
+
+  await wait(Math.max(180, delay - windup));
+  if (app.playbackToken !== playbackToken) return;
+
+  app.combatVisual = null;
+  renderCombatView();
 }
 
 function flash(element, className) {
@@ -800,6 +966,120 @@ function playbackDelay(entry) {
   if (entry.important) return 1300;
   if (["damage", "heal", "lifeSteal", "recovery", "summon", "doubleStrike", "poison", "bleed", "miss", "enemyEngage", "engageReplay", "skip", "regen", "manaRegen", "defense", "block", "blockFail", "defenseExpire"].includes(entry.type)) return 1200;
   return 950;
+}
+
+function createCombatVisual(entry) {
+  if (entry.important || ["round", "spent", "hold"].includes(entry.type)) return null;
+
+  const actorSide = entry.actorId === "player" ? "player" : "enemy";
+  const targetSide = entry.targetId === "player" ? "player" : entry.targetId ? "enemy" : actorSide;
+  const isSelf = entry.targetId && entry.targetId === entry.actorId;
+  const isTravel = Boolean(entry.targetId) && !isSelf && ["damage", "miss", "block", "blockFail", "defenseExpire", "status", "statusMiss"].includes(entry.type);
+  const action = createActionFx(entry, actorSide, isTravel ? targetSide : actorSide, isTravel);
+  const result = createResultFx(entry, isTravel ? targetSide : targetSide);
+  const pulseIds = result ? impactedIds(entry) : [];
+
+  if (!action && !result) return null;
+  return { action, result, pulseIds };
+}
+
+function createActionFx(entry, actorSide, targetSide, travel) {
+  const source = sourceVisual(entry);
+  if (!source) return null;
+
+  const actorAnchor = combatAnchor(actorSide, "fx");
+  const targetAnchor = combatAnchor(targetSide, "fx");
+
+  return {
+    ...source,
+    x: actorAnchor.x,
+    y: actorAnchor.y,
+    endX: travel ? targetAnchor.x : actorAnchor.x,
+    endY: travel ? targetAnchor.y : actorAnchor.y,
+    mode: travel ? "travel" : "self",
+  };
+}
+
+function createResultFx(entry, side) {
+  const anchor = combatAnchor(side, "result");
+
+  if (entry.type === "damage") {
+    return {
+      kind: entry.amount === 0 ? "immune" : "damage",
+      text: entry.amount === 0 ? "Immune" : `-${entry.amount}`,
+      icon: entry.critical ? "CRIT" : "",
+      ...anchor,
+    };
+  }
+
+  if (["heal", "lifeSteal", "recovery", "regen"].includes(entry.type)) {
+    return { kind: entry.type, text: `+${entry.amount ?? 0}`, icon: "", ...anchor };
+  }
+
+  if (entry.type === "block") return { kind: "block", text: "Blocked", icon: "", ...anchor };
+  if (entry.type === "blockFail") return { kind: "blockFail", text: "Block failed", icon: "", ...anchor };
+  if (entry.type === "defenseExpire") return { kind: "defenseExpire", text: "Faded", icon: "", ...anchor };
+  if (entry.type === "miss") return { kind: "miss", text: "Miss", icon: "", ...anchor };
+  if (entry.type === "statusMiss") return { kind: "statusMiss", text: "Resisted", icon: "", ...anchor };
+  if (entry.type === "status") return { kind: "status", text: getStatusLabel(entry.statusId), icon: "", ...anchor };
+  if (entry.type === "defense") return { kind: "block", text: getStatusLabel(entry.statusId), icon: "", ...anchor };
+  if (entry.type === "buff") return { kind: "buff", text: "Buff", icon: "", ...anchor };
+  if (entry.type === "summon") return { kind: "summon", text: "Summon", icon: "", ...anchor };
+  if (entry.type === "skip") return { kind: "miss", text: "Stunned", icon: "", ...anchor };
+  if (entry.type === "noMana") return { kind: "noMana", text: "No mana", icon: "", ...anchor };
+  if (entry.type === "flee") return { kind: "miss", text: "Flee", icon: "", ...anchor };
+
+  return null;
+}
+
+function combatAnchor(side, kind) {
+  return {
+    x: `var(--${side}-${kind}-x)`,
+    y: `var(--${side}-${kind}-y)`,
+  };
+}
+
+function sourceVisual(entry) {
+  const item = entry.sourceId ? getItemBySource(entry.sourceId) : null;
+  if (item?.icon) {
+    return {
+      icon: item.icon,
+      label: item.name,
+      symbol: "",
+    };
+  }
+
+  const label = entry.sourceId && entry.sourceId !== "baselineManaRegen"
+    ? String(entry.sourceId)
+    : entry.type;
+
+  return {
+    icon: "",
+    label,
+    symbol: actionSymbol(entry),
+  };
+}
+
+function actionSymbol(entry) {
+  if (["block", "blockFail", "defense", "defenseExpire"].includes(entry.type)) return "DEF";
+  if (["heal", "lifeSteal", "recovery", "regen"].includes(entry.type)) return "HP";
+  if (["status", "statusMiss", "skip"].includes(entry.type)) return "FX";
+  if (entry.type === "summon") return "SUM";
+  if (entry.type === "flee") return "RUN";
+  if (entry.damageType === "spell" || entry.sourceType === "monsterAction") return "ACT";
+  return "HIT";
+}
+
+function getItemBySource(sourceId) {
+  try {
+    return resolveItem(app.player, sourceId);
+  } catch {
+    return null;
+  }
+}
+
+function impactedIds(entry) {
+  return [entry.targetId, entry.actorId].filter(Boolean);
 }
 
 function wait(ms) {
@@ -826,6 +1106,7 @@ function createCombatView(encounter) {
       maxMana: derived.maxMana,
       shield: 0,
       spellShield: 0,
+      statuses: [],
     },
     enemies: encounter.monsters.map((monster, index) => ({
       ...monster,
@@ -833,6 +1114,7 @@ function createCombatView(encounter) {
       maxHp: monster.hp,
       shield: 0,
       spellShield: monster.spellShield ?? 0,
+      statuses: [],
     })),
   };
 }
@@ -847,6 +1129,7 @@ function applyEventToCombatView(entry) {
     maxMana: entry.actorMaxMana,
     shield: entry.actorShield,
     spellShield: entry.actorSpellShield,
+    statuses: entry.actorStatuses,
     fled: entry.actorFled,
   });
 
@@ -857,6 +1140,7 @@ function applyEventToCombatView(entry) {
     maxMana: entry.targetMaxMana,
     shield: entry.targetShield,
     spellShield: entry.targetSpellShield,
+    statuses: entry.targetStatuses,
     fled: entry.targetFled,
   });
 
@@ -868,8 +1152,13 @@ function applyEventToCombatView(entry) {
       role: entry.summonRole ?? "summon",
       hp: entry.summonHp ?? 1,
       maxHp: entry.summonMaxHp ?? 1,
+      statuses: [],
     });
   }
+}
+
+function getEncounterFightCount(encounter) {
+  return encounter.fightTotal ?? getAreaFightCount(encounter.area);
 }
 
 function getAreaFightCount(area) {
@@ -902,9 +1191,53 @@ function renderCombatView() {
     elements.playerHpText.textContent = `${player.hp} / ${player.maxHp ?? derived.maxHp} HP`;
     elements.playerManaBar.style.width = `${percent(player.mana, player.maxMana ?? derived.maxMana)}%`;
     elements.playerManaText.textContent = `${player.mana} / ${player.maxMana ?? derived.maxMana} Mana`;
+    elements.playerStatuses.innerHTML = renderStatusChips(player.statuses ?? []);
+    elements.playerPortrait.closest(".combatant").classList.toggle("pulse", app.combatVisual?.pulseIds?.includes("player") ?? false);
   }
 
   renderEncounter(encounter);
+}
+
+function renderStatusRow(statuses = []) {
+  return `<div class="status-row">${renderStatusChips(statuses)}</div>`;
+}
+
+function renderStatusChips(statuses = []) {
+  if (!statuses.length) return "";
+
+  return statuses
+    .map((status) => {
+      const definition = getStatusDefinition(status.id);
+      const label = getStatusLabel(status.id);
+      const amount = status.amount ? ` ${status.amount}` : "";
+      const duration = status.duration !== undefined ? `<span class="status-duration">${status.duration}</span>` : "";
+      const category = statusCategoryClass(status, definition.category);
+      return `<span class="status-chip ${category}" title="${label}">${statusSymbol(status.id)}${amount}${duration}</span>`;
+    })
+    .join("");
+}
+
+function statusCategoryClass(status, category) {
+  if (status.hpRegen || status.manaRegen || status.bonuses) return "buff";
+  return category ?? "buff";
+}
+
+function statusSymbol(id) {
+  const symbols = {
+    poisoned: "POI",
+    bleeding: "BLD",
+    stunned: "STN",
+    rooted: "ROOT",
+    vulnerable: "VUL",
+    healingBlocked: "NOHP",
+    hidden: "HID",
+    defender: "BLK",
+    ward: "WRD",
+    kindledCore: "CORE",
+    ashenRenewal: "REN",
+    desperateRenewal: "REN",
+  };
+  return symbols[id] ?? getStatusLabel(id).slice(0, 4).toUpperCase();
 }
 
 function percent(value, max) {

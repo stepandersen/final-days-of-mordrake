@@ -883,6 +883,7 @@ function actionEvent(text, type, actor, target, details = {}) {
     actorMaxMana: actor.maxMana,
     actorShield: actor.shield,
     actorSpellShield: actor.spellShield,
+    actorStatuses: snapshotStatuses(actor),
     targetId: target ? target.instanceId ?? target.id : null,
     targetName: target?.name ?? null,
     targetHp: target?.hp,
@@ -891,6 +892,22 @@ function actionEvent(text, type, actor, target, details = {}) {
     targetMaxMana: target?.maxMana,
     targetShield: target?.shield,
     targetSpellShield: target?.spellShield,
+    targetStatuses: target ? snapshotStatuses(target) : undefined,
     ...details,
   };
+}
+
+function snapshotStatuses(actor) {
+  return actor.statuses.map((status) => ({
+    id: status.id,
+    amount: status.amount,
+    duration: status.duration,
+    durationUnit: getStatusDurationUnit(status),
+    bonuses: status.bonuses,
+    armor: status.armor,
+    hpRegen: status.hpRegen,
+    manaRegen: status.manaRegen,
+    blockChance: status.blockChance,
+    damageType: status.damageType,
+  }));
 }
